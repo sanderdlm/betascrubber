@@ -11,7 +11,7 @@ RUN apt-get install -y curl
 RUN apt-get install -y ffmpeg
 
 RUN curl -L https://yt-dl.org/downloads/latest/youtube-dl -o /usr/local/bin/youtube-dl
-RUN chmod a+rx /usr/local/bin/youtube-dl \
+RUN chmod a+rx /usr/local/bin/youtube-dl
 
 # Enable Apache
 RUN a2enmod rewrite
