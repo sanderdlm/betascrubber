@@ -57,7 +57,7 @@ try {
     // Download video using youtube-dl
     $videoPath = $tmpDir . '/' . $folderName . '.mp4';
     $youtubeDl = new Process([
-        'youtube-dl',
+        'yt-dlp',
         '-f', 'best',
         '-o', $videoPath,
         $videoUrl
