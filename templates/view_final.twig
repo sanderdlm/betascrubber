@@ -1,0 +1,48 @@
+{% extends 'base.twig' %}
+
+{% block nav_title %}
+    {% if video_title %}
+        <span class="title">{{ video_title }}</span>
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+    {% if frames|length > 0 %}
+        <div style="background: #000;">
+            <img id="frame-display" src="{{ frame_urls[frames[0]] }}" alt="Frame" style="width: 100%; display: block;">
+        </div>
+
+        <div style="padding: 0 1rem;">
+            <input
+                type="range"
+                id="frame-scrubber"
+                min="0"
+                max="{{ frames|length - 1 }}"
+                value="0"
+            >
+        </div>
+
+        <div style="text-align: center; font-size: 0.85rem; color: #999; padding: 0.5rem;">
+            <span id="current-frame-number">1</span> / {{ frames|length }}
+        </div>
+    {% else %}
+        <div style="padding: 1rem;">
+            <p>No frames found</p>
+        </div>
+    {% endif %}
+
+    <script>
+        const frames = {{ frames|json_encode|raw }};
+        const frameUrls = {{ frame_urls|json_encode|raw }};
+        const scrubber = document.getElementById('frame-scrubber');
+        const frameDisplay = document.getElementById('frame-display');
+        const currentFrameNumber = document.getElementById('current-frame-number');
+
+        scrubber.addEventListener('input', function() {
+            const index = parseInt(this.value);
+            const frame = frames[index];
+            frameDisplay.src = frameUrls[frame];
+            currentFrameNumber.textContent = index + 1;
+        });
+    </script>
+{% endblock %}
