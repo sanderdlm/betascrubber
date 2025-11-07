@@ -1,62 +1,42 @@
-# =========================
-# 1️⃣ Build Stage — Composer
-# =========================
-FROM composer:2 AS builder
+# Use the official PHP image
+FROM php:8.4-apache
 
-WORKDIR /app
-
-# Copy composer files first for caching
-COPY composer.json composer.lock ./
-
-# Install production dependencies only
-RUN composer install --no-dev --optimize-autoloader --no-interaction --no-progress
-
-# Copy app source and rebuild optimized autoloader
-COPY . .
-RUN composer dump-autoload --optimize
-
-
-# =========================
-# 2️⃣ Production Stage — PHP 8.4 + Apache (Alpine)
-# =========================
-FROM php:8.4-apache-alpine
-
-# Install Alpine dependencies for PHP extensions & tools
-RUN apk add --no-cache \
+# Install system dependencies for PHP extensions
+RUN apt-get update && apt-get install -y \
+    libpng-dev \
+    libzip-dev \
+    libcurl4-openssl-dev \
     ffmpeg \
     git \
     unzip \
-    curl \
-    libpng-dev \
-    libzip-dev \
-    libcurl \
-    oniguruma-dev \
-    icu-dev \
-    bash \
- && docker-php-ext-install gd zip curl intl \
- && rm -rf /var/cache/apk/*
+ && docker-php-ext-install gd zip curl \
+ && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install yt-dlp (static binary)
+# Install yt-dlp
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
  && chmod a+rx /usr/local/bin/yt-dlp
 
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
 # Enable Apache rewrite module
-RUN sed -i '/LoadModule rewrite_module/s/^#//g' /usr/local/apache2/conf/httpd.conf
+RUN a2enmod rewrite
 
-# Set Apache DocumentRoot to /public
+# Set Apache to serve from /public
 ENV APACHE_DOCUMENT_ROOT /var/www/html/public
-RUN sed -i "s#DocumentRoot \"/var/www/html\"#DocumentRoot \"/var/www/html/public\"#g" /usr/local/apache2/conf/httpd.conf \
- && printf '\n<Directory "/var/www/html/public">\n    AllowOverride All\n</Directory>\n' >> /usr/local/apache2/conf/httpd.conf
+RUN sed -ri -e 's!/var/www/html!/var/www/html/public!g' /etc/apache2/sites-available/*.conf
+RUN sed -ri -e 's!/var/www/!/var/www/html/public!g' /etc/apache2/apache2.conf /etc/apache2/conf-available/*.conf
 
-# Change Apache listen port to 8080 (required by DigitalOcean)
-RUN sed -i 's/Listen 80/Listen 8080/' /usr/local/apache2/conf/httpd.conf
+# Adjust Apache to listen on port 8080 for DigitalOcean
+RUN sed -i 's/80/8080/g' /etc/apache2/ports.conf /etc/apache2/sites-available/000-default.conf
 
-# Set working directory
+# Set the working directory
 WORKDIR /var/www/html
 
-# Copy the built app from the builder stage
-COPY --from=builder /app ./
+# Copy project files
+COPY . .
+
+# Install Composer dependencies
+RUN composer install --no-dev --optimize-autoloader
 
 EXPOSE 8080
-
-# Default Apache CMD inherited from base image
