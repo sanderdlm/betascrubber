@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(composer require:*)"
+      "Bash(composer require:*)",
+      "Bash(docker build:*)"
     ],
     "deny": [],
     "ask": []

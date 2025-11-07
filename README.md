@@ -34,7 +34,7 @@ A minimal web app for extracting and reviewing frames from climbing beta videos.
 composer install
 
 # Copy environment template
-cp .env.example .env
+cp .env .env
 
 # Add your DigitalOcean Spaces credentials to .env
 SPACES_KEY=your_key

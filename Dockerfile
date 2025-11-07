@@ -23,4 +23,12 @@ WORKDIR /var/www/html
 COPY . /var/www/html
 RUN chown -R www-data:www-data /var/www/html
 
+# Configure Apache to use the public directory as DocumentRoot
+RUN sed -i 's|/var/www/html|/var/www/html/public|g' /etc/apache2/sites-available/000-default.conf && \
+    sed -i 's|/var/www/html|/var/www/html/public|g' /etc/apache2/apache2.conf
+
+# Set proper permissions for tmp directory
+RUN mkdir -p /var/www/html/public/tmp && \
+    chown -R www-data:www-data /var/www/html/public/tmp
+
 EXPOSE 80
