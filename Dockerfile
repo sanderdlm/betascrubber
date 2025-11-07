@@ -2,7 +2,7 @@
 FROM php:8.4-apache
 
 # Install necessary PHP extensions
-#RUN docker-php-ext-install mysqli pdo pdo_mysql
+RUN docker-php-ext-install gd curl zip
 
 RUN apt-get -y update
 RUN apt-get -y upgrade
