@@ -39,4 +39,7 @@ COPY . .
 # Install Composer dependencies
 RUN composer install --no-dev --optimize-autoloader
 
+# Set proper permissions
+RUN chmod -R 777 /var/www/html/public/tmp
+
 EXPOSE 8080
