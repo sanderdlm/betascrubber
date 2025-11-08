@@ -44,4 +44,7 @@ RUN composer install --no-dev --optimize-autoloader
 # Set proper permissions
 RUN chmod -R 777 /var/www/html/public/tmp
 
+# Create yt-dlp cache directory and set permissions
+RUN mkdir -p /var/www/.cache/yt-dlp && chmod -R 777 /var/www/.cache
+
 EXPOSE 8080
