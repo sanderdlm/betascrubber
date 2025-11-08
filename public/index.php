@@ -92,7 +92,27 @@ $routes = simpleDispatcher(function (RouteCollector $r) {
 });
 
 // Build the middleware queue
-$queue[] = new ErrorHandler([new HtmlFormatter()]);
+$htmlFormatter = new HtmlFormatter();
+
+// Configure error handler based on environment
+if (strtolower($appEnv) === 'production') {
+    // Production: hide error details from users, log to logger
+    $htmlFormatter = $htmlFormatter->verbose(false);
+    $errorHandler = (new ErrorHandler([$htmlFormatter]))
+        ->statusCode([
+            \Throwable::class => 500,
+        ])
+        ->catchExceptions(true)
+        ->logger($logger);
+} else {
+    // Development: show detailed errors
+    $htmlFormatter = $htmlFormatter->verbose(true);
+    $errorHandler = (new ErrorHandler([$htmlFormatter]))
+        ->catchExceptions(true)
+        ->logger($logger);
+}
+
+$queue[] = $errorHandler;
 $queue[] = new FastRoute($routes);
 $queue[] = new RequestHandler($container);
 
