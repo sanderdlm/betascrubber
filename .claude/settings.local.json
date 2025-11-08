@@ -2,7 +2,17 @@
   "permissions": {
     "allow": [
       "Bash(composer require:*)",
-      "Bash(docker build:*)"
+      "Bash(docker build:*)",
+      "Bash(php -r:*)",
+      "Bash(composer dump-autoload:*)",
+      "Bash(vendor/bin/phpunit --testdox)",
+      "Bash(php -m:*)",
+      "Bash(composer test:unit:*)",
+      "Bash(composer test:integration:*)",
+      "Bash(cat:*)",
+      "Bash(curl:*)",
+      "Bash(composer test:*)",
+      "WebFetch(domain:www.boolder.com)"
     ],
     "deny": [],
     "ask": []

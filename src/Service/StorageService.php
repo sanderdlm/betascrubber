@@ -145,68 +145,6 @@ final class StorageService
         }
     }
 
-    /**
-     * Get metadata about stored frames
-     */
-    public function getFramesMetadata(string $videoHash, string $type = 'frames'): array
-    {
-        $prefix = "{$videoHash}/{$type}/";
-        $objects = $this->listObjects($prefix);
-
-        $metadata = [
-            'exists' => !empty($objects),
-            'count' => count($objects),
-            'frames' => [],
-            'title' => null,
-        ];
-
-        foreach ($objects as $object) {
-            $filename = basename($object['key']);
-            if (pathinfo($filename, PATHINFO_EXTENSION) === 'png') {
-                $metadata['frames'][] = $filename;
-            } elseif ($filename === 'metadata.json') {
-                // We can store title in metadata file
-                try {
-                    $result = $this->s3Client->getObject([
-                        'Bucket' => $this->bucket,
-                        'Key' => $object['key'],
-                    ]);
-                    $data = json_decode($result['Body'], true);
-                    $metadata['title'] = $data['title'] ?? null;
-                } catch (AwsException $e) {
-                    // Ignore
-                }
-            }
-        }
-
-        sort($metadata['frames']);
-        return $metadata;
-    }
-
-    /**
-     * Save metadata for a video
-     */
-    public function saveMetadata(string $videoHash, array $metadata): bool
-    {
-        $key = "{$videoHash}/metadata.json";
-        try {
-            $this->s3Client->putObject([
-                'Bucket' => $this->bucket,
-                'Key' => $key,
-                'Body' => json_encode($metadata),
-                'ACL' => 'public-read',
-                'ContentType' => 'application/json',
-            ]);
-            return true;
-        } catch (AwsException $e) {
-            error_log('S3 Metadata Save Error: ' . $e->getMessage());
-            return false;
-        }
-    }
-
-    /**
-     * Copy an object within the same bucket
-     */
     public function copyObject(string $sourceKey, string $destinationKey): bool
     {
         try {

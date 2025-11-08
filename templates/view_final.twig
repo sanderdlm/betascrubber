@@ -8,11 +8,14 @@
 
 {% block content %}
     {% if frames|length > 0 %}
-        <div style="background: #000;">
-            <img id="frame-display" src="{{ frame_urls[frames[0]] }}" alt="Frame" style="width: 100%; display: block;">
+        <div class="frame-display-container">
+            <img id="frame-display" src="{{ frame_urls[frames[0]] }}" alt="Frame">
+            <div class="frame-counter">
+                <span id="current-frame-number">1</span> / {{ frames|length }}
+            </div>
         </div>
 
-        <div style="padding: 0 1rem;">
+        <div class="scrubber-container">
             <input
                 type="range"
                 id="frame-scrubber"
@@ -21,12 +24,8 @@
                 value="0"
             >
         </div>
-
-        <div style="text-align: center; font-size: 0.85rem; color: #999; padding: 0.5rem;">
-            <span id="current-frame-number">1</span> / {{ frames|length }}
-        </div>
     {% else %}
-        <div style="padding: 1rem;">
+        <div class="empty-state">
             <p>No frames found</p>
         </div>
     {% endif %}

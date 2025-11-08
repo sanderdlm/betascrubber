@@ -3,14 +3,19 @@
 declare(strict_types=1);
 
 use Dotenv\Dotenv;
-use Symfony\Component\Process\Process;
-use Symfony\Component\Process\Exception\ProcessFailedException;
 use App\Service\StorageService;
+use App\Service\VideoDownloadService;
+use App\Service\VideoSplitService;
+use App\Service\S3VideoStorageManager;
+use App\Service\LocalVideoStorageManager;
+use Monolog\Logger;
+use Monolog\Handler\StreamHandler;
+use Monolog\Handler\RotatingFileHandler;
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
 // Load environment variables
-$dotenv = Dotenv::createImmutable(__DIR__ . '/..');
+$dotenv = Dotenv::createImmutable(__DIR__ . '/../public');
 $dotenv->safeLoad();
 
 // Get arguments
@@ -18,119 +23,87 @@ $videoUrl = $argv[1] ?? '';
 $videoHash = $argv[2] ?? '';
 $tmpDir = $argv[3] ?? '';
 
-$statusFile = $tmpDir . '/' . $videoHash . '_status';
+// Initialize services based on environment
+$appEnv = $_ENV['APP_ENV'] ?? 'production';
+
+// Initialize Logger
+$logger = new Logger('process_video');
+if (strtolower($appEnv) === 'dev') {
+    $logger->pushHandler(new RotatingFileHandler(__DIR__ . '/../logs/process_video.log'));
+} else {
+    $logger->pushHandler(new StreamHandler('php://stdout'));
+}
+
+if (strtolower($appEnv) === 'dev') {
+    $storageManager = new LocalVideoStorageManager($tmpDir);
+} else {
+    $storageService = new StorageService();
+    $storageManager = new S3VideoStorageManager($storageService, $tmpDir);
+}
+
+$downloadService = new VideoDownloadService();
+$splitService = new VideoSplitService();
 
 if (empty($videoUrl) || empty($videoHash) || empty($tmpDir)) {
-    file_put_contents($statusFile, 'error');
+    $storageManager->setStatus($videoHash, 'error');
     exit(1);
 }
 
 try {
     // Update status
-    file_put_contents($statusFile, 'processing');
+    $storageManager->setStatus($videoHash, 'processing');
+    $logger->info('Starting video processing', ['hash' => $videoHash, 'url' => $videoUrl]);
 
-    // Create tmp directory if it doesn't exist
-    if (!is_dir($tmpDir)) {
-        mkdir($tmpDir, 0755, true);
+    // Download video and get title
+    $videoTitle = $downloadService->getVideoTitle($videoUrl);
+    $sanitizedTitle = $downloadService->sanitizeTitle($videoTitle);
+    $sanitizedTitle = substr($sanitizedTitle, 0, 100);
+    $logger->info('Retrieved video title', ['title' => $videoTitle, 'sanitized' => $sanitizedTitle]);
+
+    // Get video file path and download
+    $videoPath = $storageManager->getVideoFilePath($videoHash, $sanitizedTitle);
+    $logger->info('Downloading video', ['path' => $videoPath]);
+    $downloadService->downloadVideo($videoUrl, $videoPath);
+    $logger->info('Video downloaded successfully');
+
+    // Create directories
+    $dirs = $storageManager->createDirectories($videoHash, $sanitizedTitle);
+    $framesDir = $dirs['frames'];
+    $logger->info('Created directories', ['frames_dir' => $framesDir]);
+
+    // Split video into frames
+    $logger->info('Splitting video into frames');
+    $frames = $splitService->split($videoPath, $framesDir);
+    $logger->info('Video split completed', ['frame_count' => count($frames)]);
+
+    // Upload frames to S3 (production only, local keeps them on filesystem)
+    $framesUploaded = $storageManager->uploadFrames($videoHash, $framesDir);
+    if ($framesUploaded > 0) {
+        $logger->info('Frames uploaded to S3', ['count' => $framesUploaded]);
+    } else {
+        $logger->info('Frames kept in local filesystem', ['count' => count($frames)]);
     }
 
-    // Get video title using youtube-dl
-    $getTitleProcess = new Process([
-        'youtube-dl',
-        '--get-title',
-        $videoUrl
-    ]);
-    $getTitleProcess->run();
-
-    $videoTitle = '';
-    if ($getTitleProcess->isSuccessful()) {
-        $videoTitle = trim($getTitleProcess->getOutput());
-        // Sanitize title for use in folder name
-        $videoTitle = preg_replace('/[^a-zA-Z0-9\s\-_]/', '', $videoTitle);
-        $videoTitle = preg_replace('/\s+/', '_', $videoTitle);
-        $videoTitle = substr($videoTitle, 0, 100);
-    }
-
-    // Create folder name with hash and encoded title
-    $folderName = $videoHash . ($videoTitle ? '___' . $videoTitle : '');
-
-    // Download video using youtube-dl
-    $videoPath = $tmpDir . '/' . $folderName . '.mp4';
-    $youtubeDl = new Process([
-        'yt-dlp',
-        '-f', 'best',
-        '-o', $videoPath,
-        $videoUrl
-    ]);
-    $youtubeDl->setTimeout(300);
-    $youtubeDl->run();
-
-    if (!$youtubeDl->isSuccessful()) {
-        throw new ProcessFailedException($youtubeDl);
-    }
-
-    // Create frames directory
-    $framesDir = $tmpDir . '/' . $folderName . '_frames';
-    if (!is_dir($framesDir)) {
-        mkdir($framesDir, 0755, true);
-    }
-
-    // Extract 1 frame per second using ffmpeg
-    $ffmpeg = new Process([
-        'ffmpeg',
-        '-i', $videoPath,
-        '-vf', 'fps=1',
-        $framesDir . '/frame_%04d.png'
-    ]);
-    $ffmpeg->setTimeout(300);
-    $ffmpeg->run();
-
-    if (!$ffmpeg->isSuccessful()) {
-        throw new ProcessFailedException($ffmpeg);
-    }
-
-    // Upload frames to S3
-    $storage = new StorageService();
-
-    // Save metadata
-    $storage->saveMetadata($videoHash, [
-        'title' => $videoTitle,
-        'url' => $videoUrl,
-        'processed_at' => date('c'),
-    ]);
-
-    // Upload each frame to S3
-    $uploadedFrames = [];
-    if (is_dir($framesDir)) {
-        $frameFiles = scandir($framesDir);
-        foreach ($frameFiles as $file) {
-            if (pathinfo($file, PATHINFO_EXTENSION) === 'png') {
-                $localPath = $framesDir . '/' . $file;
-                $s3Key = "{$videoHash}/frames/{$file}";
-
-                if ($storage->uploadFile($localPath, $s3Key, 'image/png')) {
-                    $uploadedFrames[] = $file;
-                    // Delete local file after successful upload
-                    unlink($localPath);
-                }
-            }
-        }
-    }
-
-    // Clean up local directories
+    // Clean up video file (keep frames for selection step)
     if (file_exists($videoPath)) {
         unlink($videoPath);
-    }
-    if (is_dir($framesDir)) {
-        rmdir($framesDir);
+        $logger->info('Cleaned up video file', ['path' => $videoPath]);
     }
 
     // Mark as completed
-    file_put_contents($statusFile, 'completed');
+    $storageManager->setStatus($videoHash, 'completed');
+    $logger->info('Video processing completed successfully', ['hash' => $videoHash]);
     exit(0);
 
 } catch (Exception $e) {
+    $logger->error('Video processing failed', [
+        'hash' => $videoHash,
+        'url' => $videoUrl,
+        'error' => $e->getMessage(),
+        'trace' => $e->getTraceAsString()
+    ]);
+
     // Write error status
-    file_put_contents($statusFile, 'error');
+    $storageManager->setStatus($videoHash, 'error');
     exit(1);
 }

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Controller;
 
-use App\Service\StorageService;
+use App\Service\VideoStorageManagerInterface;
 use Laminas\Diactoros\Response\HtmlResponse;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
@@ -14,21 +14,21 @@ final readonly class ViewFinalController implements ControllerInterface
 {
     public function __construct(
         private Environment $twig,
-        private StorageService $storage
+        private VideoStorageManagerInterface $storageManager
     ) {
     }
 
     public function __invoke(ServerRequestInterface $request): ResponseInterface
     {
-        // Get the beta ID from URL parameter
-        $id = $request->getAttribute('id');
+        // Get the video hash from URL parameter
+        $videoHash = $request->getAttribute('id');
 
-        // Get final frames from S3
-        $metadata = $this->storage->getFramesMetadata($id, 'final');
+        // Get final frames metadata
+        $metadata = $this->storageManager->getFramesMetadata($videoHash, 'final');
 
-        if (!$metadata['exists']) {
+        if (empty($metadata['frames'])) {
             return new HtmlResponse($this->twig->load('view_final.twig')->render([
-                'id' => $id,
+                'id' => $videoHash,
                 'video_title' => null,
                 'frames' => [],
                 'frame_urls' => [],
@@ -37,14 +37,15 @@ final readonly class ViewFinalController implements ControllerInterface
 
         // Build frame URLs
         $frameUrls = [];
-        foreach ($metadata['frames'] as $frame) {
-            $frameUrls[$frame] = $this->storage->getPublicUrl("{$id}/final/{$frame}");
+        foreach ($metadata['frames'] as $frameData) {
+            $frameName = $frameData['filename'];
+            $frameUrls[$frameName] = $frameData['url'];
         }
 
         return new HtmlResponse($this->twig->load('view_final.twig')->render([
-            'id' => $id,
-            'video_title' => $metadata['title'],
-            'frames' => $metadata['frames'],
+            'id' => $videoHash,
+            'video_title' => $metadata['metadata']['title'] ?? null,
+            'frames' => array_column($metadata['frames'], 'filename'),
             'frame_urls' => $frameUrls,
         ]));
     }

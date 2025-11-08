@@ -2,13 +2,22 @@
 
 {% block content %}
     {% if error %}
-        <div style="padding: 1rem; background: #000; color: #fff; border-bottom: 1px solid #e0e0e0;">
+        <div id="error-notification" class="notification notification-error">
+            <button id="dismiss-error" class="notification-dismiss">&times;</button>
             {{ error }}
         </div>
     {% endif %}
 
-    <div style="padding: 1rem;">
-        <form action="/" method="post">
+    <div id="processing-notification" class="modal-overlay">
+        <div class="modal-content">
+            <div class="loading-spinner"></div>
+            <div class="modal-title">Processing video</div>
+            <div id="processing-status" class="modal-status">Checking video duration...</div>
+        </div>
+    </div>
+
+    <div class="form-section">
+        <form action="/" method="post" id="video-form">
             <input
                 type="url"
                 id="video_url"
@@ -16,29 +25,115 @@
                 placeholder="Paste YouTube URL"
                 required
                 autofocus
-                style="margin-bottom: 0.5rem;"
             />
-            <button type="submit" style="width: 100%;">
+            <button type="submit">
                 Process
             </button>
         </form>
+        <div class="form-note">
+            <strong>Note:</strong> This service is for short beta videos only. Maximum video length is 3 minutes.
+        </div>
     </div>
 
     {% if recent_boulders|length > 0 %}
-        <div style="border-top: 1px solid #e0e0e0;">
+        <div class="boulder-list">
             {% for boulder in recent_boulders %}
-                <a href="/view-final/{{ boulder.hash }}" style="display: block; border-bottom: 1px solid #e0e0e0; text-decoration: none; color: inherit; transition: background 0.2s;">
-                    <div style="padding: 1rem; display: flex; gap: 1rem; align-items: center;">
-                        <div style="flex-shrink: 0; width: 80px; height: 80px; background: #000;">
-                            <img src="/tmp/{{ boulder.folder }}_final/{{ boulder.thumbnail }}" alt="{{ boulder.title }}" style="width: 100%; height: 100%; object-fit: cover;">
+                <a href="/view-final/{{ boulder.hash }}" class="boulder-item">
+                    <div class="boulder-content">
+                        <div class="boulder-thumbnail">
+                            <img src="/tmp/{{ boulder.folder }}_final/{{ boulder.thumbnail }}" alt="{{ boulder.title }}">
                         </div>
-                        <div style="flex: 1; min-width: 0;">
-                            <div style="font-weight: 600; margin-bottom: 0.25rem;">{{ boulder.title }}</div>
-                            <div style="font-size: 0.85rem; color: #999;">{{ boulder.hash }}</div>
+                        <div class="boulder-info">
+                            <div class="boulder-title">{{ boulder.title }}</div>
+                            <div class="boulder-hash">{{ boulder.hash }}</div>
                         </div>
                     </div>
                 </a>
             {% endfor %}
         </div>
     {% endif %}
+
+    <script>
+        // Dismiss error notification
+        const errorNotification = document.getElementById('error-notification');
+        const dismissError = document.getElementById('dismiss-error');
+
+        if (dismissError) {
+            dismissError.addEventListener('click', () => {
+                errorNotification.style.display = 'none';
+            });
+        }
+
+        // Show processing notification immediately on form submit
+        const videoForm = document.getElementById('video-form');
+        const notification = document.getElementById('processing-notification');
+        const statusEl = document.getElementById('processing-status');
+
+        videoForm.addEventListener('submit', () => {
+            notification.classList.add('modal-active');
+        });
+
+        // Check if we're processing a video
+        const urlParams = new URLSearchParams(window.location.search);
+        const processId = urlParams.get('processing');
+
+        if (processId) {
+            notification.classList.add('modal-active');
+
+            // Setup SSE connection
+            const source = new EventSource('/events?processId=' + processId);
+
+            source.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                if (data.status === 'completed') {
+                    statusEl.textContent = 'Complete! Redirecting now...';
+                    source.close();
+
+                    // Redirect to frame selection
+                    setTimeout(() => {
+                        window.location.href = '/view-frames/' + data.hash;
+                    }, 500);
+                } else if (data.status === 'error') {
+                    statusEl.textContent = 'Error: ' + (data.message || 'Processing failed');
+                    notification.classList.add('modal-error');
+                    source.close();
+
+                    // Allow closing on error
+                    setTimeout(() => {
+                        notification.addEventListener('click', () => {
+                            notification.classList.remove('modal-active', 'modal-error');
+                        });
+                    }, 100);
+                } else if (data.status === 'timeout') {
+                    statusEl.textContent = 'Processing timed out. Please try again.';
+                    notification.classList.add('modal-error');
+                    source.close();
+
+                    // Allow closing on timeout
+                    setTimeout(() => {
+                        notification.addEventListener('click', () => {
+                            notification.classList.remove('modal-active', 'modal-error');
+                        });
+                    }, 100);
+                } else {
+                    // Still processing
+                    statusEl.textContent = 'Extracting frames... We\'ll redirect you when ready.';
+                }
+            };
+
+            source.onerror = () => {
+                statusEl.textContent = 'Connection error. Please refresh to check status.';
+                notification.classList.add('modal-error');
+                source.close();
+
+                // Allow closing on error
+                setTimeout(() => {
+                    notification.addEventListener('click', () => {
+                        notification.classList.remove('modal-active', 'modal-error');
+                    });
+                }, 100);
+            };
+        }
+    </script>
 {% endblock %}
