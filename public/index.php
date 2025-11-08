@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Infra\ProductionErrorPage;
 use App\Service\LocalVideoStorageManager;
 use App\Service\S3VideoStorageManager;
 use App\Service\StorageService;
@@ -91,25 +92,20 @@ $routes = simpleDispatcher(function (RouteCollector $r) {
     $r->get('/view-final/{id}', ViewFinalController::class);
 });
 
-// Build the middleware queue
-$htmlFormatter = new HtmlFormatter();
-
 // Configure error handler based on environment
 if (strtolower($appEnv) === 'production') {
     // Production: hide error details from users, log to logger
-    $htmlFormatter = $htmlFormatter->verbose(false);
-    $errorHandler = (new ErrorHandler([$htmlFormatter]))
-        ->statusCode([
-            \Throwable::class => 500,
-        ])
-        ->catchExceptions(true)
-        ->logger($logger);
+    $errorHandler = new ErrorHandler([
+        new HtmlFormatter(
+            null,
+            $container->get(ProductionErrorPage::class),
+        ),
+    ]);
 } else {
     // Development: show detailed errors
-    $htmlFormatter = $htmlFormatter->verbose(true);
-    $errorHandler = (new ErrorHandler([$htmlFormatter]))
-        ->catchExceptions(true)
-        ->logger($logger);
+    $errorHandler = new ErrorHandler([
+        new HtmlFormatter()
+    ]);
 }
 
 $queue[] = $errorHandler;
