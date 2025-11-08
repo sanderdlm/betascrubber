@@ -8,11 +8,13 @@ use App\Service\VideoStorageManagerInterface;
 use Laminas\Diactoros\Response;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Log\LoggerInterface;
 
 final readonly class EventStreamController implements ControllerInterface
 {
     public function __construct(
-        private VideoStorageManagerInterface $storageManager
+        private VideoStorageManagerInterface $storageManager,
+        private LoggerInterface $logger
     ) {
     }
 
@@ -44,6 +46,7 @@ final readonly class EventStreamController implements ControllerInterface
             $status = $this->storageManager->getStatus($videoHash);
 
             if ($status === 'completed') {
+                $this->logger->info('Video processing completed', ['hash' => $videoHash]);
                 echo "data: " . json_encode([
                     'status' => 'completed',
                     'hash' => $videoHash
@@ -53,6 +56,10 @@ final readonly class EventStreamController implements ControllerInterface
             }
 
             if (($status !== null && $status !== 'processing')) {
+                $this->logger->error('Video processing error', [
+                    'hash' => $videoHash,
+                    'status' => $status
+                ]);
                 echo "data: " . json_encode([
                     'status' => 'error',
                     'message' => $status

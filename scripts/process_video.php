@@ -96,14 +96,16 @@ try {
     exit(0);
 
 } catch (Exception $e) {
+    $errorMessage = $e->getMessage();
+
     $logger->error('Video processing failed', [
         'hash' => $videoHash,
         'url' => $videoUrl,
-        'error' => $e->getMessage(),
+        'error' => $errorMessage,
         'trace' => $e->getTraceAsString()
     ]);
 
-    // Write error status
-    $storageManager->setStatus($videoHash, 'error');
+    // Write error status with message
+    $storageManager->setStatus($videoHash, 'error: ' . $errorMessage);
     exit(1);
 }

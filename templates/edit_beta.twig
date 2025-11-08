@@ -95,7 +95,7 @@
                         window.location.href = '/view-frames/' + data.hash;
                     }, 500);
                 } else if (data.status === 'error') {
-                    statusEl.textContent = 'Error: ' + (data.message || 'Processing failed');
+                    statusEl.textContent = 'Something went wrong. Please try again or contact support if the issue persists.';
                     notification.classList.add('modal-error');
                     source.close();
 
@@ -106,7 +106,7 @@
                         });
                     }, 100);
                 } else if (data.status === 'timeout') {
-                    statusEl.textContent = 'Processing timed out. Please try again.';
+                    statusEl.textContent = 'Processing is taking longer than expected. Please try again.';
                     notification.classList.add('modal-error');
                     source.close();
 
